@@ -1,0 +1,6 @@
+<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><style>body{font:24px monospace}</style><pre id=o>Connecting...</pre><small id=m></small><script>
+const p=new RTCPeerConnection(),d=p.createDataChannel('clock');
+let n=0;d.onmessage=e=>{let t=performance.now();o.textContent=e.data;m.textContent=`${++n} messages; clock DOM ${(performance.now()-t).toFixed(3)} ms`};p.onconnectionstatechange=()=>o.textContent=p.connectionState;
+p.onicecandidate=async e=>{if(!e.candidate)try{await p.setRemoteDescription({type:'answer',sdp:await(await fetch('https://demo.seanpatten.com/rtcclock',{method:'POST',body:p.localDescription.sdp})).text()})}catch(e){o.textContent=e}};
+p.setLocalDescription();
+</script>
