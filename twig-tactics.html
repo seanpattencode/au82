@@ -459,5 +459,100 @@ buildRoster();buildMissions();resetGame(0,'normal',true);drawIcons();new ResizeO
 // A small read-only status interface also makes local automated QA reproducible.
 window.ironFront={status:()=>({time:game.time,gold:game.gold,population:ownPop(0),kills:game.kills,mission:game.mission,order:game.order,won:game.over&&game.bases[1].hp<=0,over:game.over,paused,queue:game.queue.map(q=>q.type),units:game.units.filter(u=>u.hp>0).map(u=>({id:u.id,type:u.type,side:u.side,x:u.x,hp:u.hp})),bases:game.bases.map(b=>({hp:b.hp,maxHP:b.maxHP}))})};
 </script>
+<script>
+/* 2P over WebRTC — appended layer, zero edits to the game above; eject = delete this block.
+   Reference: seanpatten.com/games/pong + /call (PeerJS broker signaling, 4-char code + hash-link join,
+   host-authoritative sim, guest sends commands only). Guest applies MIRRORED snapshots (side/x flipped)
+   so every existing side-0 UI path — gold, roster, orders, minimap, selection — works natively. */
+(()=>{
+const NET={role:0,conn:0,peer:0,on:0,ping:0,seq:0,ts:0,tp:0,rq:-1,echo:0,snap:0,pz:0};
+const SN=['idle','walk','attack','mine','return','dead'],ON=['garrison','defend','attack'],PK=['arrow','magic','rain'];
+MISSIONS.push({name:'Two kingdoms',tag:'2P',description:'',hp:1600,playerHP:1600,startGold:650,raid:1e9,interval:1e9,enemyIncome:.75,roster:['sword'],sky:MISSIONS[0].sky});
+const _bm=buildMissions;buildMissions=()=>{const m=MISSIONS.pop();_bm();MISSIONS.push(m);};
+const row=document.createElement('div');row.className='startrow';row.style.marginTop='10px';
+row.innerHTML='<button class="secondary" id="mpCreate">⚔ 2-PLAYER ONLINE · CREATE</button><input id="mpCode" placeholder="CODE" maxlength="4" autocapitalize="characters" autocomplete="off" style="width:5.5em;text-align:center;background:#0006;color:#e8dcc0;border:1px solid #55605a;border-radius:8px;font:inherit;padding:8px"><button class="secondary" id="mpJoin">JOIN</button>';
+document.querySelector('#titleScreen .startrow').after(row);
+const st=t=>{$('mpCreate').textContent=t;};
+const code4=()=>{let s='',a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let i=0;i<4;i++)s+=a[Math.random()*a.length|0];return s;};
+const lib=cb=>{if(window.Peer)return cb();const s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';s.onload=cb;s.onerror=()=>st('✗ peerjs load failed — online?');document.head.appendChild(s);};
+window.__create2p=()=>lib(()=>{NET.role='host';st('Creating…');const C=code4();
+ NET.peer=new Peer('au82twig-'+C,{debug:0});
+ NET.peer.on('open',()=>{location.hash=C;window.__code=C;st('CODE '+C+' — share link · waiting…');navigator.clipboard&&navigator.clipboard.writeText(location.href).catch(()=>{});});
+ NET.peer.on('connection',ch=>{NET.conn=ch;wire(ch);});
+ NET.peer.on('error',e=>e.type=='unavailable-id'?(NET.peer.destroy(),window.__create2p()):st('✗ '+e.type));});
+window.__join2p=(C,n)=>lib(()=>{NET.role='guest';st('Joining '+C+'…');n=n||0;
+ NET.peer=new Peer({debug:0});
+ NET.peer.on('open',()=>{NET.conn=NET.peer.connect('au82twig-'+C,{reliable:false});wire(NET.conn);});
+ NET.peer.on('error',e=>e.type=='peer-unavailable'&&n<4?(NET.peer.destroy(),setTimeout(()=>window.__join2p(C,n+1),700)):st('✗ '+(e.type=='peer-unavailable'?'no game '+C:e.type)));});
+$('mpCreate').onclick=()=>NET.on||window.__create2p();
+$('mpJoin').onclick=()=>{const v=$('mpCode').value.toUpperCase().trim();if(v&&!NET.on)window.__join2p(v);};
+if(/^#[A-Z2-9]{4}$/.test(location.hash))window.__join2p(location.hash.slice(1));
+function wire(ch){ch.on('open',()=>{NET.on=1;start2P();});ch.on('data',rx);ch.on('close',()=>{if(!NET.on)return;NET.on=0;running=false;message('Opponent disconnected — reload to play again.',30);});}
+function start2P(){
+ unlockAudio();title=false;running=true;paused=false;$('titleScreen').hidden=true;$('helpPanel').hidden=true;$('resultPanel').hidden=true;
+ resetGame(3,'normal');game.enemyGold=650;makeUnit('sword',1,WORLD-665);
+ ['rallyBtn','volleyBtn','speedBtn','restartBtn','menuBtn','controlBtn'].forEach(id=>$(id).style.display='none');
+ document.querySelector('[data-tab="upgrades"]').style.display='none';$('raid').style.display='none';
+ if(NET.role=='guest'){$('pauseBtn').style.display='none';$('queue').addEventListener('click',e=>{e.stopPropagation();e.preventDefault();},true);}
+ $('missionName').textContent='2P · '+(window.__code||$('mpCode').value.toUpperCase());
+ message(NET.role=='host'?'Opponent joined — to war!':'Connected — to war!',4);cv.focus({preventScroll:true});
+}
+function pack(){const e=NET.echo;NET.echo=0;return {k:'s',q:NET.seq++,t:game.time,g:game.gold,eg:game.enemyGold,o:ON.indexOf(game.order),eo:ON.indexOf(game.enemyOrder),ov:game.over?1:0,w:game.over?(game.bases[1].hp<=0?1:2):0,kl:game.kills,ls:game.lost,pz:paused?1:0,e,
+ u:game.units.map(u=>[u.id,KEYS.indexOf(u.type),u.side,u.x|0,+u.lane.toFixed(1),Math.ceil(u.hp),Math.ceil(u.maxHP),u.dir,+u.anim.toFixed(2),+u.swing.toFixed(2),u.walk?1:0,SN.indexOf(u.state),u.carrying|0,u.hidden?1:0,+u.deadTime.toFixed(2),+u.hit.toFixed(2)]),
+ p:game.projectiles.map(p=>[PK.indexOf(p.kind),p.side,p.x0|0,p.y0|0,p.x1|0,p.y1|0,+p.t.toFixed(3),p.duration]),
+ b:game.bases.map(b=>[Math.ceil(b.hp),b.maxHP,+b.hit.toFixed(2)]),
+ tq:game.queue.map(q=>[KEYS.indexOf(q.type),+q.progress.toFixed(2),q.total]),
+ eq:game.enemyQueue.map(q=>[KEYS.indexOf(q.type),+q.progress.toFixed(2),q.total])};}
+const M=x=>WORLD-x;
+function apply(s){
+ game.time=s.t;game.gold=s.eg;game.enemyGold=s.g;game.order=ON[s.eo];game.enemyOrder=ON[s.o];game.kills=s.ls;game.lost=s.kl;
+ game.units=s.u.map(a=>({id:a[0],type:KEYS[a[1]],side:1-a[2],x:M(a[3]),lane:a[4],hp:a[5],maxHP:a[6],dir:-a[7],anim:a[8],swing:a[9],walk:a[10],state:SN[a[11]],carrying:a[12],hidden:!!a[13],deadTime:a[14],hit:a[15],attackCD:0,mineSlot:a[0]%3,mineSpark:0}));
+ game.projectiles=s.p.map(a=>({kind:PK[a[0]],side:1-a[1],x0:M(a[2]),y0:a[3],x1:M(a[4]),y1:a[5],t:a[6],duration:a[7]}));
+ game.bases[0].hp=s.b[1][0];game.bases[0].maxHP=s.b[1][1];game.bases[0].hit=s.b[1][2];
+ game.bases[1].hp=s.b[0][0];game.bases[1].maxHP=s.b[0][1];game.bases[1].hit=s.b[0][2];
+ game.queue=s.eq.map(a=>({type:KEYS[a[0]],progress:a[1],total:a[2]}));
+ game.enemyQueue=s.tq.map(a=>({type:KEYS[a[0]],progress:a[1],total:a[2]}));
+ if(s.pz!=NET.pz){NET.pz=s.pz;message(s.pz?'Host paused.':'Battle resumed.',2);}
+ if(s.ov&&!game.over){game.over=true;running=false;finish2(s.w==2);}
+}
+const send=m=>{try{NET.conn&&NET.conn.open&&NET.conn.send(m);}catch(e){}};
+function rx(d){
+ if(NET.role=='host'){
+  if(d.k=='c'){const t=KEYS[d.i];if(!t||game.over||paused)return;const ty=TYPES[t],ep=game.units.reduce((n,u)=>n+(u.side===1&&u.hp>0?TYPES[u.type].pop:0),0)+game.enemyQueue.reduce((n,q)=>n+TYPES[q.type].pop,0);
+   if(game.enemyGold>=ty.cost&&ep+ty.pop<=MAXPOP&&game.enemyQueue.length<6){game.enemyGold-=ty.cost;game.enemyQueue.push({type:t,progress:0,total:ty.train});}}
+  else if(d.k=='o')game.enemyOrder=ON[d.i]||'defend';
+  else if(d.k=='a')NET.echo=d.a;
+ }else if(d.k=='s'&&d.q>NET.rq){NET.rq=d.q;NET.snap=d;if(d.e)NET.ping=Math.round(performance.now()-d.e);}
+}
+const _step=step,_eb=enemyBrain,_rec=recruit,_ord=orderArmy,_fin=finish,_tc=toggleControl,_up=buyUpgrade,_ra=rally,_vo=volley,_tpz=togglePause;
+enemyBrain=dt=>NET.role?null:_eb(dt);
+step=dt=>{if(!NET.role)return _step(dt);
+ if(NET.role=='host'){_step(dt);const n=performance.now();if(NET.on&&n-NET.ts>66){NET.ts=n;send(pack());}}
+ else{const s=NET.snap;NET.snap=0;if(s)apply(s);else for(const u of game.units)if(u.hp>0)u.anim+=dt*(u.walk?9:3);
+  const n=performance.now();if(NET.on&&n-NET.tp>500){NET.tp=n;send({k:'a',a:n});}}};
+recruit=t=>{if(NET.role!='guest')return _rec(t);
+ if(title||game.over)return false;const d=TYPES[t];
+ if(game.gold<d.cost){message('Not enough gold. Keep your miners working.');return false;}
+ if(game.queue.length>=6){message('Training queue is full.');return false;}
+ send({k:'c',i:KEYS.indexOf(t)});message(d.name+' ordered.');beep('select');return true;};
+orderArmy=o=>{if(NET.role!='guest')return _ord(o);if(title||game.over)return;
+ send({k:'o',i:ON.indexOf(o)});game.order=o;beep('order');document.querySelectorAll('[data-order]').forEach(b=>b.classList.toggle('active',b.dataset.order===o));};
+finish=w=>{if(!NET.role)return _fin(w);if(game.over)return;game.over=true;running=false;if(NET.role=='host')send(pack());finish2(w);};
+toggleControl=()=>NET.role?message('Direct unit control is disabled in 2-player.'):_tc();
+togglePause=f=>NET.role=='guest'?0:_tpz(f);
+buyUpgrade=id=>NET.role?false:_up(id);rally=()=>NET.role?0:_ra();volley=()=>NET.role?0:_vo();
+function finish2(win){
+ $('resultEyebrow').textContent=win?'TERRITORY SECURED':'THE LINE HAS FALLEN';
+ $('resultTitle').textContent=win?'Victory is yours.':'Your statue has fallen.';
+ $('resultDescription').textContent='2-player battle · '+(win?'their':'your')+' statue is rubble. Good game.';
+ $('resultTime').textContent=formatTime(game.time);$('resultKills').textContent=game.kills;$('resultGold').textContent=Math.floor(game.goldMined)||'—';
+ $('nextBtn').textContent='REMATCH · NEW LOBBY';$('nextBtn').onclick=()=>{location.hash='';location.reload();};
+ $('resultMenuBtn').style.display='none';$('resultPanel').hidden=false;
+}
+setInterval(()=>{if(NET.role&&NET.on){$('missionIndex').textContent=NET.role=='guest'&&NET.ping?'⇄ '+NET.ping+'ms':NET.role.toUpperCase();
+  if(NET.role=='host'&&performance.now()-NET.ts>300){NET.ts=performance.now();send(pack());}}
+ window.__net2={role:NET.role,connected:!!NET.on,ping:NET.ping,seq:NET.seq,rq:NET.rq,units:game?game.units.filter(u=>u.hp>0).length:0,eq:game?game.enemyQueue.length:0,eg:game?Math.floor(game.enemyGold):0,over:game?game.over:0};},500);
+})();
+</script>
 </body>
 </html>
