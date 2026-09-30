@@ -473,23 +473,35 @@ const row=document.createElement('div');row.className='startrow';row.style.margi
 row.innerHTML='<button class="secondary" id="mpCreate">⚔ 2-PLAYER ONLINE · CREATE</button><input id="mpCode" placeholder="CODE" maxlength="4" autocapitalize="characters" autocomplete="off" style="width:5.5em;text-align:center;background:#0006;color:#e8dcc0;border:1px solid #55605a;border-radius:8px;font:inherit;padding:8px"><button class="secondary" id="mpJoin">JOIN</button>';
 document.querySelector('#titleScreen .startrow').after(row);
 const st=t=>{$('mpCreate').textContent=t;};
+const mw=document.createElement('div');mw.id='mpWait';
+mw.style.cssText='position:fixed;inset:0;z-index:99900;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;background:#050c0fef;font-family:system-ui';
+mw.innerHTML='<div style="color:#d4af37;letter-spacing:.22em;font-size:14px">WAITING FOR OPPONENT…</div><div id=mpBig style="font-size:clamp(52px,15vw,104px);font-weight:800;letter-spacing:.16em;color:#f4e2b8;line-height:1"></div><div style="color:#9fb0a8;max-width:30em">Send this link, or have them type the code. This screen stays up until they join.</div><div id=mpLink style="word-break:break-all;color:#8cf;max-width:34em;font-size:14px;cursor:pointer" title="click to copy"></div><div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><button id=mpCopy class="primary">COPY LINK</button><button id=mpNew class="secondary">NEW CODE</button><button id=mpCancel class="secondary">CANCEL</button></div><div id=mpNote style="color:#7f8f88;font-size:13px;height:1.2em"></div>';
+document.body.appendChild(mw);
+const copyLink=()=>{navigator.clipboard?navigator.clipboard.writeText(location.href).then(()=>$('mpNote').textContent='✓ link copied').catch(()=>$('mpNote').textContent='copy failed — long-press the link'):$('mpNote').textContent='';};
+const showWait=()=>{$('mpBig').textContent=window.__code;$('mpLink').textContent=location.href;$('mpNote').textContent='';mw.style.display='flex';};
+const hideWait=()=>{mw.style.display='none';};
+$('mpCopy').onclick=copyLink;$('mpLink').onclick=copyLink;
+$('mpNew').onclick=()=>{if(confirm('Make a NEW code? Your current link ('+window.__code+') stops working and anyone you already sent it to can no longer join.')){try{NET.peer&&NET.peer.destroy()}catch(e){}NET.peer=0;window.__create2p();}};
+$('mpCancel').onclick=()=>{try{NET.peer&&NET.peer.destroy()}catch(e){}NET.peer=0;NET.role=0;location.hash='';hideWait();st('⚔ 2-PLAYER ONLINE · CREATE');};
 const code4=()=>{let s='',a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';for(let i=0;i<4;i++)s+=a[Math.random()*a.length|0];return s;};
 const lib=cb=>{if(window.Peer)return cb();const s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';s.onload=cb;s.onerror=()=>st('✗ peerjs load failed — online?');document.head.appendChild(s);};
 window.__create2p=()=>lib(()=>{NET.role='host';st('Creating…');const C=code4();
  NET.peer=new Peer('au82twig-'+C,{debug:0});
- NET.peer.on('open',()=>{location.hash=C;window.__code=C;st('CODE '+C+' — share link · waiting…');navigator.clipboard&&navigator.clipboard.writeText(location.href).catch(()=>{});});
+ NET.peer.on('open',()=>{location.hash=C;window.__code=C;showWait();copyLink();});
  NET.peer.on('connection',ch=>{NET.conn=ch;wire(ch);});
  NET.peer.on('error',e=>e.type=='unavailable-id'?(NET.peer.destroy(),window.__create2p()):st('✗ '+e.type));});
 window.__join2p=(C,n)=>lib(()=>{NET.role='guest';st('Joining '+C+'…');n=n||0;
  NET.peer=new Peer({debug:0});
  NET.peer.on('open',()=>{NET.conn=NET.peer.connect('au82twig-'+C,{reliable:false});wire(NET.conn);});
  NET.peer.on('error',e=>e.type=='peer-unavailable'&&n<4?(NET.peer.destroy(),setTimeout(()=>window.__join2p(C,n+1),700)):st('✗ '+(e.type=='peer-unavailable'?'no game '+C:e.type)));});
-$('mpCreate').onclick=()=>NET.on||window.__create2p();
+$('mpCreate').onclick=()=>{if(NET.on)return;
+ if(NET.peer){if(!confirm(NET.role=='host'?'You already have a game waiting (code '+window.__code+'). Create a NEW one? The current link will stop working.':'Cancel the current join attempt and host a new game instead?'))return;try{NET.peer.destroy()}catch(e){}NET.peer=0;}
+ window.__create2p();};
 $('mpJoin').onclick=()=>{const v=$('mpCode').value.toUpperCase().trim();if(v&&!NET.on)window.__join2p(v);};
 if(/^#[A-Z2-9]{4}$/.test(location.hash))window.__join2p(location.hash.slice(1));
 function wire(ch){ch.on('open',()=>{NET.on=1;start2P();});ch.on('data',rx);ch.on('close',()=>{if(!NET.on)return;NET.on=0;running=false;message('Opponent disconnected — reload to play again.',30);});}
 function start2P(){
- unlockAudio();title=false;running=true;paused=false;$('titleScreen').hidden=true;$('helpPanel').hidden=true;$('resultPanel').hidden=true;
+ hideWait();unlockAudio();title=false;running=true;paused=false;$('titleScreen').hidden=true;$('helpPanel').hidden=true;$('resultPanel').hidden=true;
  resetGame(3,'normal');game.enemyGold=650;makeUnit('sword',1,WORLD-665);
  ['rallyBtn','volleyBtn','speedBtn','restartBtn','menuBtn','controlBtn'].forEach(id=>$(id).style.display='none');
  document.querySelector('[data-tab="upgrades"]').style.display='none';$('raid').style.display='none';
