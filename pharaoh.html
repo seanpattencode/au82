@@ -1,0 +1,5 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>pharaoh</title>
+<body style="margin:0;background:#000;color:#d4af37;font:16px monospace">
+<div style="background:#a00;color:#fff;padding:8px;text-align:center">DRAFT — unpolished, may vanish if unused</div>
+<div style="padding:24px">pharaoh — au82<p><audio id=a controls preload=auto src=pharaoh.wav></audio><p id=t></div>
+<script>a.onplay=()=>{let s=performance.now(),c=a.currentTime,f=()=>a.paused||(a.currentTime>c?t.textContent='started '+(performance.now()-s).toFixed(1)+' ms after play':requestAnimationFrame(f));f()}</script>
